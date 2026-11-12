@@ -3,7 +3,8 @@ import UIKit
 
 /// 想改行为就改这里，改完重新编译即可。
 enum Config {
-    /// true：黑着的时候不让系统自动锁屏（屏幕保持「亮着但全黑」）。
+    /// true：在本 App 前台时不让系统自动锁屏。
+    /// 注意：切到 miniwatts 之后这条就失效了，系统设置里「自动锁定」必须改成「永不」。
     static let keepScreenAwake = true
     /// 双击任意处唤醒。
     static let wakeByDoubleTap = true
@@ -35,7 +36,7 @@ struct RootView: View {
             } else if isDark {
                 DarkLayer(onWake: wake)
             } else {
-                AwakePanel(onBlackout: goDark)
+                AwakePanel(onBlackout: goDark, onRestore: restoreBrightness)
             }
         }
         .statusBarHidden(true)
@@ -44,20 +45,11 @@ struct RootView: View {
         .onAppear {
             if !showingOnboarding { goDark() }
         }
-        .onDisappear {
-            Brightness.restore()
-            UIApplication.shared.isIdleTimerDisabled = false
-        }
         .onChange(of: scenePhase) { _, phase in
-            switch phase {
-            case .active:
-                // 从后台/控制中心回来，如果还该是黑的，重新压暗。
-                if isDark && !showingOnboarding { Brightness.dim() }
-            case .inactive, .background:
-                // 离开本 App 就先还亮度，别把桌面也弄黑。
-                Brightness.restore()
-            @unknown default:
-                break
+            // 只在回到前台时重新压暗；离开前台绝不还原——
+            // 压暗之后切到 miniwatts，屏幕必须保持全黑。
+            if phase == .active && isDark && !showingOnboarding {
+                Brightness.dim()
             }
         }
     }
@@ -83,6 +75,13 @@ struct RootView: View {
         Brightness.restore()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
+
+    private func restoreBrightness() {
+        Brightness.restore()
+        isDark = false
+        UIApplication.shared.isIdleTimerDisabled = false
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
 }
 
 // MARK: - 全黑层
@@ -105,27 +104,28 @@ private struct DarkLayer: View {
 
 private struct AwakePanel: View {
     let onBlackout: () -> Void
+    let onRestore: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
 
             Image(systemName: "moon.stars.fill")
-                .font(.system(size: 42, weight: .light))
+                .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.white.opacity(0.85))
-                .padding(.bottom, 22)
+                .padding(.bottom, 20)
 
             Text("亮度已恢复")
-                .font(.system(size: 26, weight: .semibold, design: .rounded))
+                .font(.system(size: 25, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
 
-            Text("黑屏只是把屏幕压到最暗，不是关机。\n再次黑屏后，双击屏幕任意处就能回来。")
+            Text("再次黑屏后，切到 miniwatts，屏幕会一直是全黑的——\n它在前台，照样记数据。")
                 .font(.system(size: 14))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.55))
                 .lineSpacing(4)
                 .padding(.top, 12)
-                .padding(.horizontal, 30)
+                .padding(.horizontal, 28)
 
             Spacer()
 
@@ -142,11 +142,22 @@ private struct AwakePanel: View {
             }
             .padding(.horizontal, 40)
 
-            Text("想退出：从屏幕底部上滑回到桌面")
+            Button(action: onRestore) {
+                Text("只还原亮度，不黑屏")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 6)
+
+            Text("被卡在全黑时：拉控制中心直接调亮度，或双击屏幕回来")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.35))
-                .padding(.top, 18)
-                .padding(.bottom, 28)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white.opacity(0.32))
+                .padding(.top, 10)
+                .padding(.bottom, 26)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(red: 0.04, green: 0.04, blue: 0.05).ignoresSafeArea())
@@ -159,62 +170,83 @@ private struct OnboardingView: View {
     let start: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Spacer()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("黑屏")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.top, 60)
 
-            Text("黑屏")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                Text("让 miniwatts 留在前台记数据，屏幕却暗着。")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .padding(.top, 8)
 
-            Text("点「开始」之后，屏幕会立刻暗到看不见。")
-                .font(.system(size: 15))
-                .foregroundStyle(.white.opacity(0.6))
-                .padding(.top, 10)
+                Text("点「开始」之后屏幕会立刻暗到看不见。亮度是全局的，切到 miniwatts 也一样黑。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .lineSpacing(4)
+                    .padding(.top, 14)
 
-            VStack(alignment: .leading, spacing: 16) {
-                row("doubletap", "双击屏幕任意处", "亮度立刻回来")
-                row("hand.tap", "长按 2 秒", "同上，双击失灵时用")
-                row("arrow.down.to.line", "切到别的 App", "亮度自动还原")
-            }
-            .padding(.top, 34)
+                Divider().overlay(Color.white.opacity(0.08)).padding(.vertical, 26)
 
-            Text("它做不到真正关机——iOS 不给第三方 App 关屏权限，只能把亮度压到 0。16 Pro 是 OLED，纯黑像素不发光，看起来几乎一样。")
-                .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.4))
-                .lineSpacing(4)
+                Text("装好之后必须先做两件事")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.75))
+
+                VStack(alignment: .leading, spacing: 16) {
+                    step("1", "设置 › 显示与亮度 › 自动锁定", "改成「永不」，否则锁屏会把 miniwatts 挤出前台")
+                    step("2", "设置 › 辅助功能 › 显示与文字大小", "关掉「自动亮度」，否则它会跟你抢亮度")
+                }
+                .padding(.top, 16)
+
+                Divider().overlay(Color.white.opacity(0.08)).padding(.vertical, 26)
+
+                Text("想不切 App 就熄暗？")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.75))
+
+                Text("本 App 带了两个快捷指令：「熄暗屏幕」和「还原屏幕亮度」。在「快捷指令」里把它们绑到\n设置 › 辅助功能 › 触控 › 轻点背面 › 双击 / 三击。\n这样在 miniwatts 里双击后盖，屏幕直接暗下去，它还留在前台。")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .lineSpacing(5)
+                    .padding(.top, 10)
+
+                Spacer(minLength: 40)
+
+                Button(action: start) {
+                    Text("开始")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.white.opacity(0.92), in: Capsule())
+                }
                 .padding(.top, 30)
-
-            Spacer()
-
-            Button(action: start) {
-                Text("开始")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .background(Color.white.opacity(0.92), in: Capsule())
+                .padding(.bottom, 40)
             }
-            .padding(.bottom, 28)
+            .padding(.horizontal, 28)
         }
-        .padding(.horizontal, 30)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(red: 0.04, green: 0.04, blue: 0.05).ignoresSafeArea())
     }
 
-    private func row(_ icon: String, _ title: String, _ detail: String) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 18))
-                .foregroundStyle(.white.opacity(0.7))
-                .frame(width: 26, alignment: .leading)
+    private func step(_ index: String, _ path: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(index)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(.black)
+                .frame(width: 18, height: 18)
+                .background(Color.white.opacity(0.75), in: Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 15, weight: .medium))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(path)
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white.opacity(0.9))
                 Text(detail)
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.4))
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
