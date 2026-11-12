@@ -6,11 +6,11 @@ import AppIntents
 /// 所以 miniwatts 能一直留前台记录，屏幕却已经压暗了。
 struct DimScreenIntent: AppIntent {
     static let title: LocalizedStringResource = "熄暗屏幕"
-    static let description = IntentDescription("把屏幕亮度压到 0，当前正在用的 App 留在前台继续运行。")
+    static let description = IntentDescription("把屏幕亮度压到 0，并在后台持续压住，当前 App 留在前台继续运行。")
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
-        await MainActor.run { Brightness.dim() }
+        await MainActor.run { DimController.dim() }
         return .result()
     }
 }
@@ -18,11 +18,11 @@ struct DimScreenIntent: AppIntent {
 /// 「还原屏幕亮度」——恢复到熄暗之前记下的数值。
 struct RestoreScreenIntent: AppIntent {
     static let title: LocalizedStringResource = "还原屏幕亮度"
-    static let description = IntentDescription("把亮度恢复到熄暗之前的数值。")
+    static let description = IntentDescription("停止压暗，把亮度恢复到熄暗之前的数值。")
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
-        await MainActor.run { Brightness.restore() }
+        await MainActor.run { DimController.restore() }
         return .result()
     }
 }

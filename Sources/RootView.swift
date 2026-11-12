@@ -49,7 +49,7 @@ struct RootView: View {
             // 只在回到前台时重新压暗；离开前台绝不还原——
             // 压暗之后切到 miniwatts，屏幕必须保持全黑。
             if phase == .active && isDark && !showingOnboarding {
-                Brightness.dim()
+                DimController.dim()
             }
         }
     }
@@ -65,19 +65,19 @@ struct RootView: View {
     private func goDark() {
         withAnimation(.easeInOut(duration: 0.15)) { isDark = true }
         UIApplication.shared.isIdleTimerDisabled = Config.keepScreenAwake
-        Brightness.dim()
+        DimController.dim()
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
     }
 
     private func wake() {
         withAnimation(.easeInOut(duration: 0.15)) { isDark = false }
         UIApplication.shared.isIdleTimerDisabled = false
-        Brightness.restore()
+        DimController.restore()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     private func restoreBrightness() {
-        Brightness.restore()
+        DimController.restore()
         isDark = false
         UIApplication.shared.isIdleTimerDisabled = false
         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -182,7 +182,7 @@ private struct OnboardingView: View {
                     .foregroundStyle(.white.opacity(0.6))
                     .padding(.top, 8)
 
-                Text("点「开始」之后屏幕会立刻暗到看不见。亮度是全局的，切到 miniwatts 也一样黑。")
+                Text("点「开始」之后屏幕会立刻暗到看不见。亮度是全局的，切到 miniwatts 也一样黑。\n\n系统有时会把亮度抢回去（切前台、自动亮度都会），所以 App 在后台挂着一段静音保持存活，每 0.4 秒把亮度重新压回 0。")
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.4))
                     .lineSpacing(4)
